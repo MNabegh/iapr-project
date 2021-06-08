@@ -530,28 +530,41 @@ def get_chain_code(image):
       
     return count, border, directions_count, chain_area, deviation
 
+
+# Fourier Descriptor
+def fourierDescriptor(contour_array):
+    contour_complex = np.empty(contour_array.shape[0],dtype=complex)
+    contour_complex.real = contour_array[:,0,0]
+    contour_complex.imag = contour_array[:,0,1]
+    fourier_result= np.fft.fft(contour_complex)
+    magnitude = np.array([np.abs(fft) for fft in fourier_result][1:11])
+    r = magnitude[0]
+    magnitude = [m / r for m in magnitude]
+    return magnitude
+
 # train model
 def train_model(cards_data,ground_data,model1,classes_map):
     
     ## prepare input MNIST
     X = []
-    #y = []
+    y = []
     
     with torch.no_grad():
         for i in tqdm(range(91)):
 
             data_row = cards_data.iloc[i]
-            #truth_row = ground_data.iloc[i]
+            truth_row = ground_data.iloc[i]
             cards = ['P1_number', 'P2_number', 'P3_number', 'P4_number']
 
             for idx in cards:
                 vector = cv.resize(data_row[idx], (28, 28))
                 card = torch.tensor(vector, dtype=torch.float).unsqueeze(0).unsqueeze(0)
-                #truth = truth_row[idx]    
+                truth = truth_row[idx]    
                 out = model1(card)
                 X.append(out.numpy().reshape(-1))
-                #y.append(classes_map[truth])
-    
+                y.append(classes_map[truth])
+
+# UNCOMMENT TO USE FREEMAN CODING
     ## prepare input (freeman)
     X_chain = []
     y_chain = []
@@ -572,9 +585,30 @@ def train_model(cards_data,ground_data,model1,classes_map):
             
     X_chain = np.array(X_chain)
     y_chain = np.array(y_chain)
+
+    ## Fourier descriptors
+    X_fft = []
+    for i in range(91):
+
+        data_row = cards_data.iloc[i]
+        cards = ['P1_number', 'P2_number', 'P3_number', 'P4_number']
+
+        for index in cards:
+            img = data_row[index]
+            contours, hierarchy = cv.findContours(img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE)
+            contours = sorted(contours, key=lambda contour: cv.contourArea(contour), reverse= True)[0]
+            fft_features = fourierDescriptor(contours)
+            X_fft.append(fft_features)
+            
+        
+    X_fft = np.array(X_fft)
     
     ## concatenate inputs and train XGBClassifier
-    X_both = np.concatenate((X, X_chain), axis=1)
+    #### UNCOMMENT TO USE FREEMAN CODE
+    #X_both = np.concatenate((X, X_chain), axis=1)
+    
+    #### Comment if you use FREEMAN CODE
+    X_both = np.concatenate((X_fft, X), axis=1)
     model = xgboost.XGBClassifier()
     model = model.fit(X_both, y_chain)
     
@@ -597,6 +631,7 @@ def process_data_for_number_classification(game_df,model1,cards_data,ground_data
                 out = model1(card)
                 X_test.append(out.numpy().reshape(-1))
     
+    ## Freeman code
     for i in range(len(game_df)):
 
         data_row = cards_data.iloc[i]
@@ -610,9 +645,26 @@ def process_data_for_number_classification(game_df,model1,cards_data,ground_data
             code_features = directions_count + [area] + [indiv_deviation]
             X_test_chain.append(code_features)
 
+    X_test_fft = []
+    for i in range(len(game_df)):
 
-    X_test_chain = np.array(X_test_chain)
-    X_both = np.concatenate((X_test, X_test_chain), axis=1)
+        data_row = cards_data.iloc[i]
+        cards = ['P1_number', 'P2_number', 'P3_number', 'P4_number']
+
+        for index in cards:
+            img = data_row[index]
+            contours, hierarchy = cv.findContours(img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE)
+            contours = sorted(contours, key=lambda contour: cv.contourArea(contour), reverse= True)[0]
+            fft_features = fourierDescriptor(contours)
+            X_test_fft.append(fft_features)
+            
+        
+    X_test_fft = np.array(X_test_fft)
+            
+    X_both = np.concatenate((X_test_fft, X_test), axis=1)
+    ## Uncomment to use Freeman Code
+    #X_test_chain = np.array(X_test_chain)
+    #X_both = np.concatenate((X_test, X_test_chain), axis=1)
     return X_both
 
 def assign_predicted_to_players(pred,dataframe):
@@ -641,4 +693,50 @@ def output_result(dataframe):
     df["P4"] = df.apply(lambda row: row.number_p4 + row.suite_p4 ,axis=1)
     return df[["P1","P2","P3","P4","D"]].copy()
 
+def compute_score_standard(P1,P2,P3,P4):
+    p1=int(P1[0].replace('J','10').replace('Q','11').replace('K','12'))
+    p2=int(P2[0].replace('J','10').replace('Q','11').replace('K','12'))
+    p3=int(P3[0].replace('J','10').replace('Q','11').replace('K','12'))
+    p4=int(P4[0].replace('J','10').replace('Q','11').replace('K','12'))
+    numbers = [p1,p2,p3,p4]
+    round_max = np.max([p1,p2,p3,p4])
+    round_pts = np.zeros(4,dtype=int)
+    for i in range(len(numbers)):
+        if numbers[i]==round_max:
+            round_pts[i]=1
+    return round_pts
 
+def compute_score_advanced(P1,P2,P3,P4,D):  
+    p1_number=int(P1[0].replace('J','10').replace('Q','11').replace('K','12'))
+    p2_number=int(P2[0].replace('J','10').replace('Q','11').replace('K','12'))
+    p3_number=int(P3[0].replace('J','10').replace('Q','11').replace('K','12'))
+    p4_number=int(P4[0].replace('J','10').replace('Q','11').replace('K','12'))
+    player_numbers=[p1_number,p2_number,p3_number,p4_number]
+    
+    p1_suite=P1[1]
+    p2_suite=P2[1]
+    p3_suite=P3[1]
+    p4_suite=P4[1]
+    
+    suites =[p1_suite,p2_suite,p3_suite,p4_suite]
+
+    dealer_indx = int(D)-1
+    numbers = []
+    for i in range(len(suites)):
+        if suites[i]!=suites[dealer_indx]:
+            numbers.append(0)
+        else:
+            numbers.append(player_numbers[i])
+    
+    
+    round_winner = np.argmax(numbers)
+    round_pts = np.zeros(4,dtype=int)
+    round_pts[round_winner]=1
+    return round_pts
+
+def predict_game_points(result):
+    scores = pd.DataFrame()
+    scores['standard'] = result.copy().apply(lambda row: compute_score_standard(row.P1,row.P2,row.P3,row.P4),axis=1)
+    scores['advanced'] = result.copy().apply(lambda row: compute_score_advanced(row.P1,row.P2,row.P3,row.P4,row.D),axis=1)
+    pts_standard, pts_advanced = np.sum(scores.standard),np.sum(scores.advanced)
+    return pts_standard, pts_advanced
