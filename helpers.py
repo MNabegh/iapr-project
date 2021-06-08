@@ -604,10 +604,10 @@ def train_model(cards_data,ground_data,model1,classes_map):
     X_fft = np.array(X_fft)
     
     ## concatenate inputs and train XGBClassifier
-    #### UNCOMMENT TO USE FREEMAN CODE
+    ### UNCOMMENT TO USE FREEMAN CODE
     #X_both = np.concatenate((X, X_chain), axis=1)
     
-    #### Comment if you use FREEMAN CODE
+    ### Comment if you use FREEMAN CODE
     X_both = np.concatenate((X_fft, X), axis=1)
     model = xgboost.XGBClassifier()
     model = model.fit(X_both, y_chain)
@@ -615,7 +615,7 @@ def train_model(cards_data,ground_data,model1,classes_map):
     return model
 
 
-def process_data_for_number_classification(game_df,model1,cards_data,ground_data):
+def process_data_for_number_classification(game_df,model1):
     X_test = []
     X_test_chain = []
     
@@ -634,8 +634,7 @@ def process_data_for_number_classification(game_df,model1,cards_data,ground_data
     ## Freeman code
     for i in range(len(game_df)):
 
-        data_row = cards_data.iloc[i]
-        truth_row = ground_data.iloc[i]
+        data_row = game_df.iloc[i]
         cards = ['P1_number', 'P2_number', 'P3_number', 'P4_number']
 
         for index in cards:
@@ -648,7 +647,7 @@ def process_data_for_number_classification(game_df,model1,cards_data,ground_data
     X_test_fft = []
     for i in range(len(game_df)):
 
-        data_row = cards_data.iloc[i]
+        data_row = game_df.iloc[i]
         cards = ['P1_number', 'P2_number', 'P3_number', 'P4_number']
 
         for index in cards:
@@ -662,9 +661,9 @@ def process_data_for_number_classification(game_df,model1,cards_data,ground_data
     X_test_fft = np.array(X_test_fft)
             
     X_both = np.concatenate((X_test_fft, X_test), axis=1)
-    ## Uncomment to use Freeman Code
-    #X_test_chain = np.array(X_test_chain)
-    #X_both = np.concatenate((X_test, X_test_chain), axis=1)
+#     # Uncomment to use Freeman Code
+#     X_test_chain = np.array(X_test_chain)
+#     X_both = np.concatenate((X_test, X_test_chain), axis=1)
     return X_both
 
 def assign_predicted_to_players(pred,dataframe):
